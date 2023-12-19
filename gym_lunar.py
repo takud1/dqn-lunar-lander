@@ -26,17 +26,21 @@ test = False
 log_interval = 10
 save_interval = 100
 
+# Check for CUDA
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(device)
 
 # Replay Buffer
 class ReplayBuffer:
+    # Initialize a deque with maximum length of buffer_limit
     def __init__(self):
         self.buffer = deque(maxlen=buffer_limit)
 
+    # Add a transition to the buffer
     def put(self, transition):
         self.buffer.append(transition)
 
+    # Sample a mini batch from the buffer
     def sample(self, n):
         mini_batch = random.sample(self.buffer, n)
         state_list, action_list, reward_list, next_state_list, done_mask_lst = [], [], [], [], []
@@ -49,6 +53,7 @@ class ReplayBuffer:
             next_state_list.append(next_state)
             done_mask_lst.append([done_mask])
 
+        # Convert the lists to PyTorch tensors and move them to the specified device
         return (
             torch.tensor(state_list, dtype=torch.float).to(device),
             torch.tensor(action_list).to(device),
@@ -57,9 +62,11 @@ class ReplayBuffer:
             torch.tensor(done_mask_lst).to(device),
         )
 
+    # Return the current size of the buffer
     def size(self):
         return len(self.buffer)
-    
+
+    # Clear the buffer
     def clear(self):
         self.buffer.clear()
 
@@ -71,6 +78,7 @@ class QNetwork(nn.Module):
         self.fc2 = nn.Linear(256, 256)
         self.fc3 = nn.Linear(256, 4)
 
+    # Forward pass
     def forward(self, x):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -86,6 +94,7 @@ class DQN:
         self.buffer = ReplayBuffer()
         self.update_count = 0
 
+    # Get action from the Q network
     def get_action(self, state, epsilon):
         if np.random.rand() <= epsilon:
             return np.random.randint(0, 4)
@@ -94,6 +103,7 @@ class DQN:
             q_value = self.q_net(state)
             return q_value.argmax().item()
 
+    # Train the Q network
     def train(self):
         for _ in range(10):
             state, action, reward, next_state, done_mask = self.buffer.sample(batch_size)
@@ -111,18 +121,22 @@ class DQN:
             loss.backward()
             self.optimizer.step()
 
+    # Update the target network
     def update_target(self):
         self.target_net.load_state_dict(self.q_net.state_dict())
 
+    # Save and load the model
     def save(self, save_path):
         torch.save(self.q_net.state_dict(), save_path)
 
+    # Load the model
     def load(self, load_path):
         self.q_net.load_state_dict(torch.load(load_path))
 
 # Main
 if __name__ == "__main__":
 
+    # Test the model
     if test:
         agent = DQN()
 
@@ -141,6 +155,7 @@ if __name__ == "__main__":
         vid.close()
         env.close()
 
+    # Train the model
     else:
         env = gym.make("LunarLander-v2")
         agent = DQN()
@@ -155,6 +170,7 @@ if __name__ == "__main__":
         if os.path.isfile(load_path):
             agent.load(load_path)
 
+        # Train the model for max_episodes
         for episode_num in range(max_episodes):
             epsilon = max(0.01, exploration_noise * (exploration_noise_decay ** episode_num))
             done = False
@@ -180,6 +196,7 @@ if __name__ == "__main__":
                 if agent.update_count % update_interval == 0:
                     agent.update_target()
 
+            # Print the score
             if episode_num % print_interval == 0 and episode_num != 0:
                 print(
                     "Episode: {}, Steps: {}, Exploration: {:.4f}, Score: {:.1f}".format(
@@ -187,12 +204,14 @@ if __name__ == "__main__":
                     )
                 )
 
+                # Save data to tensorboard
                 writer = SummaryWriter('./train_logs')
                 writer.add_scalar('Score', score/print_interval, episode_num)
                 writer.close()
 
                 score = 0.0
 
+            # Save the model
             if episode_num % save_interval == 0 and episode_num != 0:
                 agent.save(os.path.join(save_path, "model_{}.pth".format(episode_num)))
 
